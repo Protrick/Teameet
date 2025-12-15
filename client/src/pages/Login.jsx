@@ -1,0 +1,123 @@
+import React, { useContext, useState } from 'react';
+import { AppContext } from '../context/AppContext';
+import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+
+const Login = () => {
+  const { backendUrl, getUserData } = useContext(AppContext);
+  const navigate = useNavigate();
+
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+
+    try {
+      console.log('Attempting login...');
+      const { data } = await axios.post(`${backendUrl}/api/auth/login`, formData, { withCredentials: true });
+
+      console.log('Login response:', data);
+
+      if (data.success) {
+        console.log('Login successful');
+
+        // After successful login the server sets the auth cookie. Fetch profile
+        // to populate client state (cookies are included via withCredentials).
+        await getUserData();
+        navigate('/');
+      } else {
+        setMessage(data.message);
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setMessage(error.response?.data?.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen animated-gradient-bg flex items-center justify-center py-12 pt-20">
+      <div className="max-w-md w-full mx-4">
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8">
+          <h2 className="text-3xl font-bold text-white mb-6 text-center">Login</h2>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter your email"
+              />
+            </div>
+
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter your password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {loading ? 'Logging in...' : 'Login'}
+            </button>
+          </form>
+
+          {message && (
+            <div className="mt-4 p-3 rounded bg-red-500/20 text-red-300">
+              {message}
+            </div>
+          )}
+
+          <div className="mt-6 text-center">
+            <Link to="/reset-password" className="text-blue-300 hover:text-blue-200 text-sm">
+              Forgot Password?
+            </Link>
+          </div>
+
+          <div className="mt-4 text-center">
+            <span className="text-gray-300">Don't have an account? </span>
+            <Link to="/register" className="text-blue-300 hover:text-blue-200">
+              Sign up
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Login;
