@@ -6,9 +6,7 @@ const Home = () => {
   const { userdata, isLoggedin } = useContext(AppContext);
 
   useEffect(() => {
-    console.log('Home component mounted');
-    console.log('Userdata:', userdata);
-    console.log('IsLoggedin:', isLoggedin);
+    // home mounted
   }, [userdata, isLoggedin]);
 
   // Safe resolution for different userdata shapes
@@ -19,7 +17,7 @@ const Home = () => {
       <div className="container mx-auto px-4 py-16">
         <div className="text-center mb-12">
           <h1 className="text-5xl font-bold text-white mb-6">
-            {isLoggedin ? `Welcome back, ${displayName}!` : "Welcome to TeamFinder"}
+            {isLoggedin ? `Welcome back, ${displayName}!` : "Welcome to Teameet"}
           </h1>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
             {isLoggedin

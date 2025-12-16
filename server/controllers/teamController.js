@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import teamModel from "../models/team.model.js";
-import transporter from "../config/nodemailer.js";
+import sendMail from "../utils/mailer.js";
 
 dotenv.config();
 
@@ -50,7 +50,7 @@ export const showCreatedTeams = async (req, res) => {
     if (!requesterId)
       return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    console.log("Fetching teams for creator:", requesterId);
+    // fetching teams for creator
 
     const teams = await teamModel
       .find({ creator: new mongoose.Types.ObjectId(requesterId) })
@@ -60,17 +60,7 @@ export const showCreatedTeams = async (req, res) => {
       .populate("rejectedApplicants.user", "name email")
       .sort({ createdAt: -1 });
 
-    console.log(
-      "Found teams with applicants:",
-      teams.map((t) => ({
-        name: t.name,
-        applicantsCount: t.applicants?.length || 0,
-        applicants: t.applicants?.map((a) => ({
-          user: a.user?.name,
-          appliedAt: a.appliedAt,
-        })),
-      }))
-    );
+    // teams found (omitted verbose debug output)
 
     return res.status(200).json({ success: true, teams });
   } catch (error) {
@@ -186,26 +176,21 @@ export const getTeamById = async (req, res) => {
  * Apply to a team
  */
 export const applyToTeam = async (req, res) => {
-  console.log("=== applyToTeam START ===");
-  console.log("User ID:", req.user?.id);
-  console.log("Team ID:", req.params.teamId);
-  console.log("Request body:", req.body);
+  // applyToTeam handler
 
   try {
     const requesterId = req.user?.id;
     if (!requesterId) {
-      console.log("ERROR: No requesterId found");
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
     const { teamId } = req.params;
     const { linkedin, github, resume } = req.body;
 
-    console.log("Extracted data:", { teamId, linkedin, github, resume });
+    // extracted data
 
     // Validate teamId
     if (!mongoose.Types.ObjectId.isValid(teamId)) {
-      console.log("ERROR: Invalid teamId format");
       return res
         .status(400)
         .json({ success: false, message: "Invalid teamId" });
@@ -213,37 +198,28 @@ export const applyToTeam = async (req, res) => {
 
     // Validate required fields
     if (!linkedin || !github || !resume) {
-      console.log("ERROR: Missing required fields");
       return res.status(400).json({
         success: false,
         message: "LinkedIn, GitHub, and Resume links are required",
       });
     }
 
-    console.log("Finding team by ID:", teamId);
+    // finding team
     const team = await teamModel
       .findById(teamId)
       .populate("creator", "name email");
 
     if (!team) {
-      console.log("ERROR: Team not found");
       return res
         .status(404)
         .json({ success: false, message: "Team not found" });
     }
 
-    console.log("Team found:", {
-      id: team._id,
-      name: team.name,
-      creator: team.creator,
-      membersCount: team.members?.length || 0,
-      applicantsCount: team.applicants?.length || 0,
-    });
+    // team found
 
     // Check if user is the creator
     const creatorId = String(team.creator._id || team.creator);
     if (creatorId === String(requesterId)) {
-      console.log("ERROR: User trying to apply to own team");
       return res
         .status(400)
         .json({ success: false, message: "Cannot apply to your own team" });
@@ -254,7 +230,6 @@ export const applyToTeam = async (req, res) => {
       (m) => String(m._id || m) === String(requesterId)
     );
     if (isMember) {
-      console.log("ERROR: User is already a member");
       return res
         .status(400)
         .json({ success: false, message: "Already a member" });
@@ -265,7 +240,6 @@ export const applyToTeam = async (req, res) => {
       (a) => String(a.user?._id || a.user) === String(requesterId)
     );
     if (hasApplied) {
-      console.log("ERROR: User has already applied");
       return res
         .status(400)
         .json({ success: false, message: "Already applied" });
@@ -276,7 +250,6 @@ export const applyToTeam = async (req, res) => {
       (a) => String(a.user?._id || a.user) === String(requesterId)
     );
     if (wasRejected) {
-      console.log("ERROR: User was previously rejected");
       return res
         .status(400)
         .json({ success: false, message: "Application previously rejected" });
@@ -284,11 +257,10 @@ export const applyToTeam = async (req, res) => {
 
     // Check if team is full
     if ((team.members?.length || 0) >= (team.maxMembers || 2)) {
-      console.log("ERROR: Team is full");
       return res.status(400).json({ success: false, message: "Team is full" });
     }
 
-    console.log("All validations passed. Creating applicant object...");
+    // validations passed
 
     const applicant = {
       user: new mongoose.Types.ObjectId(requesterId),
@@ -298,17 +270,12 @@ export const applyToTeam = async (req, res) => {
       appliedAt: new Date(),
     };
 
-    console.log("Applicant object created:", applicant);
-    console.log(
-      "Current applicants count before adding:",
-      team.applicants?.length || 0
-    );
+    // created applicant object
 
     // Add applicant to team
     team.applicants.push(applicant);
 
-    console.log("Applicant added to array. New count:", team.applicants.length);
-    console.log("Saving team...");
+    // added applicant and saving
 
     // Use updateOne to avoid validating the entire document
     await teamModel.updateOne(
@@ -316,46 +283,31 @@ export const applyToTeam = async (req, res) => {
       { $push: { applicants: applicant } }
     );
 
-    console.log(
-      "Team saved successfully! Final applicants count:",
-      team.applicants.length
-    );
+    // team saved successfully
 
     // Send email notification (non-blocking)
     try {
       if (team.creator && team.creator.email && team.name) {
-        console.log("Sending notification email to:", team.creator.email);
-        console.log("Team name for email:", team.name);
-        const mailOptions = {
-          from: process.env.SENDER_EMAIL,
+        // send notification email
+        await sendMail({
           to: team.creator.email,
           subject: `New application for "${team.name}"`,
           text: `User applied to your team.\n\nTeam: ${team.name}\nApplicant ID: ${requesterId}`,
-        };
-        await transporter.sendMail(mailOptions);
-        console.log("Notification email sent successfully");
-      } else {
-        console.log("Missing data for email:", {
-          hasCreator: !!team.creator,
-          hasEmail: !!team.creator?.email,
-          hasTeamName: !!team.name,
-          teamName: team.name,
         });
+      } else {
+        // missing email data; skip notification
       }
     } catch (mailErr) {
       console.error("Failed to send notification email:", mailErr);
       // Don't fail the request if email fails
     }
 
-    console.log("=== applyToTeam SUCCESS ===");
+    // success
     return res
       .status(200)
       .json({ success: true, message: "Applied successfully" });
   } catch (error) {
-    console.error("=== applyToTeam ERROR ===");
-    console.error("Error type:", error.constructor.name);
-    console.error("Error message:", error.message);
-    console.error("Error stack:", error.stack);
+    console.error("applyToTeam error:", error);
 
     // Check for specific MongoDB errors
     if (error.name === "ValidationError") {
@@ -389,17 +341,13 @@ export const applyToTeam = async (req, res) => {
  * Accept an applicant (creator only)
  */
 export const acceptApplicant = async (req, res) => {
-  console.log("=== acceptApplicant START ===");
-  console.log("User ID:", req.user?.id);
-  console.log("Team ID:", req.params.teamId);
-  console.log("Applicant ID:", req.params.applicantId);
+  // accept applicant handler
 
   try {
     const requesterId = req.user?.id;
     const { teamId, applicantId } = req.params;
 
     if (!requesterId) {
-      console.log("ERROR: No requesterId found");
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
@@ -407,33 +355,23 @@ export const acceptApplicant = async (req, res) => {
       !mongoose.Types.ObjectId.isValid(teamId) ||
       !mongoose.Types.ObjectId.isValid(applicantId)
     ) {
-      console.log("ERROR: Invalid ID format");
       return res.status(400).json({ success: false, message: "Invalid id(s)" });
     }
 
-    console.log("Finding team and populating applicants...");
+    // finding team and applicants
     const team = await teamModel
       .findById(teamId)
       .populate("applicants.user", "name email");
 
     if (!team) {
-      console.log("ERROR: Team not found");
       return res
         .status(404)
         .json({ success: false, message: "Team not found" });
     }
 
-    console.log("Team found:", {
-      id: team._id,
-      name: team.name,
-      creator: team.creator,
-      membersCount: team.members?.length || 0,
-      applicantsCount: team.applicants?.length || 0,
-      maxMembers: team.maxMembers,
-    });
+    // team found
 
     if (String(team.creator) !== String(requesterId)) {
-      console.log("ERROR: User is not the creator");
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
@@ -442,14 +380,12 @@ export const acceptApplicant = async (req, res) => {
     );
 
     if (applicantIndex === -1) {
-      console.log("ERROR: Applicant not found in team");
       return res
         .status(404)
         .json({ success: false, message: "Applicant not found" });
     }
 
     if ((team.members?.length || 0) >= (team.maxMembers || 2)) {
-      console.log("ERROR: Team is already full");
       return res
         .status(400)
         .json({ success: false, message: "Team is already full" });
@@ -459,11 +395,7 @@ export const acceptApplicant = async (req, res) => {
     const applicantEmail = applicant.user.email;
     const applicantName = applicant.user.name;
 
-    console.log("Applicant to accept:", {
-      id: applicantId,
-      name: applicantName,
-      email: applicantEmail,
-    });
+    // applicant details
 
     // Use atomic operations to avoid validation errors
     const updateResult = await teamModel.updateOne(
@@ -476,21 +408,18 @@ export const acceptApplicant = async (req, res) => {
       }
     );
 
-    console.log("Update result:", updateResult);
+    // update result
 
     // Check if team should be closed (separately to avoid validation issues)
     const updatedTeam = await teamModel.findById(teamId);
     if ((updatedTeam.members?.length || 0) >= (updatedTeam.maxMembers || 2)) {
       await teamModel.updateOne({ _id: teamId }, { isOpen: false });
-      console.log("Team marked as closed (full)");
     }
 
     // Send acceptance email (non-blocking)
-    try {
-      if (applicantEmail && team.name) {
-        console.log("Sending acceptance email with team name:", team.name);
-        const mailOptions = {
-          from: process.env.SENDER_EMAIL,
+    if (applicantEmail && team.name) {
+      try {
+        await sendMail({
           to: applicantEmail,
           subject: `Accepted to "${team.name}"`,
           html: `<p>Hi ${
@@ -498,29 +427,18 @@ export const acceptApplicant = async (req, res) => {
           },</p><p>Congratulations — you have been accepted to join the team "<strong>${
             team.name
           }</strong>". Welcome aboard!</p>`,
-        };
-        await transporter.sendMail(mailOptions);
-        console.log("Acceptance email sent to:", applicantEmail);
-      } else {
-        console.log("Missing data for acceptance email:", {
-          hasEmail: !!applicantEmail,
-          hasTeamName: !!team.name,
-          teamName: team.name,
         });
+      } catch (emailError) {
+        console.error("acceptApplicant email error:", emailError);
       }
-    } catch (emailError) {
-      console.error("Failed to send acceptance email:", emailError);
     }
 
-    console.log("=== acceptApplicant SUCCESS ===");
+    // success
     return res
       .status(200)
       .json({ success: true, message: "Applicant accepted" });
   } catch (error) {
-    console.error("=== acceptApplicant ERROR ===");
-    console.error("Error type:", error.constructor.name);
-    console.error("Error message:", error.message);
-    console.error("Error stack:", error.stack);
+    console.error("acceptApplicant error:", error);
 
     // Check for specific MongoDB errors
     if (error.name === "ValidationError") {
@@ -535,12 +453,10 @@ export const acceptApplicant = async (req, res) => {
       });
     }
 
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Internal server error: " + error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error: " + error.message,
+    });
   }
 };
 
@@ -548,17 +464,13 @@ export const acceptApplicant = async (req, res) => {
  * Reject an applicant (creator only)
  */
 export const rejectApplicant = async (req, res) => {
-  console.log("=== rejectApplicant START ===");
-  console.log("User ID:", req.user?.id);
-  console.log("Team ID:", req.params.teamId);
-  console.log("Applicant ID:", req.params.applicantId);
+  // rejectApplicant handler
 
   try {
     const requesterId = req.user?.id;
     const { teamId, applicantId } = req.params;
 
     if (!requesterId) {
-      console.log("ERROR: No requesterId found");
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
@@ -566,31 +478,23 @@ export const rejectApplicant = async (req, res) => {
       !mongoose.Types.ObjectId.isValid(teamId) ||
       !mongoose.Types.ObjectId.isValid(applicantId)
     ) {
-      console.log("ERROR: Invalid ID format");
       return res.status(400).json({ success: false, message: "Invalid id(s)" });
     }
 
-    console.log("Finding team and populating applicants...");
+    // finding team
     const team = await teamModel
       .findById(teamId)
       .populate("applicants.user", "name email");
 
     if (!team) {
-      console.log("ERROR: Team not found");
       return res
         .status(404)
         .json({ success: false, message: "Team not found" });
     }
 
-    console.log("Team found:", {
-      id: team._id,
-      name: team.name,
-      creator: team.creator,
-      applicantsCount: team.applicants?.length || 0,
-    });
+    // team found
 
     if (String(team.creator) !== String(requesterId)) {
-      console.log("ERROR: User is not the creator");
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
@@ -599,7 +503,6 @@ export const rejectApplicant = async (req, res) => {
     );
 
     if (applicantIndex === -1) {
-      console.log("ERROR: Applicant not found in team");
       return res
         .status(404)
         .json({ success: false, message: "Applicant not found" });
@@ -609,11 +512,7 @@ export const rejectApplicant = async (req, res) => {
     const applicantEmail = applicant.user.email;
     const applicantName = applicant.user.name;
 
-    console.log("Applicant to reject:", {
-      id: applicantId,
-      name: applicantName,
-      email: applicantEmail,
-    });
+    // applicant details
 
     // Create rejected applicant object
     const rejectedApplicant = {
@@ -636,14 +535,12 @@ export const rejectApplicant = async (req, res) => {
       }
     );
 
-    console.log("Update result:", updateResult);
+    // update result
 
     // Send rejection email (non-blocking)
-    try {
-      if (applicantEmail && team.name) {
-        console.log("Sending rejection email with team name:", team.name);
-        const mailOptions = {
-          from: process.env.SENDER_EMAIL,
+    if (applicantEmail && team.name) {
+      try {
+        await sendMail({
           to: applicantEmail,
           subject: `Update on your application to "${team.name}"`,
           html: `<p>Hi ${
@@ -651,29 +548,18 @@ export const rejectApplicant = async (req, res) => {
           },</p><p>Thank you for applying to "<strong>${
             team.name
           }</strong>". After careful consideration, we have decided to move forward with other candidates.</p>`,
-        };
-        await transporter.sendMail(mailOptions);
-        console.log("Rejection email sent to:", applicantEmail);
-      } else {
-        console.log("Missing data for rejection email:", {
-          hasEmail: !!applicantEmail,
-          hasTeamName: !!team.name,
-          teamName: team.name,
         });
+      } catch (emailError) {
+        console.error("rejectApplicant email error:", emailError);
       }
-    } catch (emailError) {
-      console.error("Failed to send rejection email:", emailError);
     }
 
-    console.log("=== rejectApplicant SUCCESS ===");
+    // success
     return res
       .status(200)
       .json({ success: true, message: "Applicant rejected" });
   } catch (error) {
-    console.error("=== rejectApplicant ERROR ===");
-    console.error("Error type:", error.constructor.name);
-    console.error("Error message:", error.message);
-    console.error("Error stack:", error.stack);
+    console.error("rejectApplicant error:", error);
 
     // Check for specific MongoDB errors
     if (error.name === "ValidationError") {
@@ -688,12 +574,10 @@ export const rejectApplicant = async (req, res) => {
       });
     }
 
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Internal server error: " + error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error: " + error.message,
+    });
   }
 };
 
@@ -701,17 +585,13 @@ export const rejectApplicant = async (req, res) => {
  * Withdraw application (applicant only)
  */
 export const withdrawApplication = async (req, res) => {
-  console.log("=== withdrawApplication START ===");
-  console.log("User ID:", req.user?.id);
-  console.log("Team ID:", req.params.teamId);
-  console.log("Applicant ID:", req.params.applicantId);
+  // withdraw application handler
 
   try {
     const requesterId = req.user?.id;
     const { teamId, applicantId } = req.params;
 
     if (!requesterId) {
-      console.log("ERROR: No requesterId found");
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
@@ -719,46 +599,38 @@ export const withdrawApplication = async (req, res) => {
       !mongoose.Types.ObjectId.isValid(teamId) ||
       !mongoose.Types.ObjectId.isValid(applicantId)
     ) {
-      console.log("ERROR: Invalid ID format");
       return res.status(400).json({ success: false, message: "Invalid id(s)" });
     }
 
     // only allow withdrawing your own application
     if (String(requesterId) !== String(applicantId)) {
-      console.log("ERROR: User trying to withdraw someone else's application");
       return res.status(403).json({
         success: false,
         message: "Can only withdraw your own application",
       });
     }
 
-    console.log("Finding team...");
+    // finding team
     const team = await teamModel.findById(teamId);
     if (!team) {
-      console.log("ERROR: Team not found");
       return res
         .status(404)
         .json({ success: false, message: "Team not found" });
     }
 
-    console.log("Team found:", {
-      id: team._id,
-      name: team.name,
-      applicantsCount: team.applicants?.length || 0,
-    });
+    // team found
 
     const applicantIndex = (team.applicants || []).findIndex(
       (a) => String(a.user?._id || a.user) === String(applicantId)
     );
 
     if (applicantIndex === -1) {
-      console.log("ERROR: Application not found");
       return res
         .status(404)
         .json({ success: false, message: "Application not found" });
     }
 
-    console.log("Application found, withdrawing...");
+    // withdrawing application
 
     // Use atomic operation to avoid validation errors
     const updateResult = await teamModel.updateOne(
@@ -770,8 +642,8 @@ export const withdrawApplication = async (req, res) => {
       }
     );
 
-    console.log("Update result:", updateResult);
-    console.log("=== withdrawApplication SUCCESS ===");
+    // update result
+    // withdraw success
 
     return res
       .status(200)
@@ -795,12 +667,10 @@ export const withdrawApplication = async (req, res) => {
       });
     }
 
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Internal server error: " + error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error: " + error.message,
+    });
   }
 };
 

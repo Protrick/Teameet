@@ -49,7 +49,23 @@ const CreateTeam = () => {
           </div>
           <div>
             <label className="block text-white mb-2">Domain</label>
-            <input name="domain" value={form.domain} onChange={handleChange} required className="w-full p-2 rounded bg-white/5 text-white" />
+            <select
+              name="domain"
+              value={form.domain}
+              onChange={handleChange}
+              required
+              className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="" className="text-black">Select domain</option>
+              <option value="frontend" className="text-black">Frontend</option>
+              <option value="backend" className="text-black">Backend</option>
+              <option value="fullstack" className="text-black">Full Stack</option>
+              <option value="mobile" className="text-black">Mobile</option>
+              <option value="ai-ml" className="text-black">AI/ML</option>
+              <option value="devops" className="text-black">DevOps</option>
+              <option value="design" className="text-black">Design</option>
+              <option value="other" className="text-black">Other</option>
+            </select>
           </div>
           <div>
             <label className="block text-white mb-2">Description</label>

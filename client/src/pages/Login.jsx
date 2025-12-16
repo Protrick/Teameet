@@ -27,13 +27,10 @@ const Login = () => {
     setMessage('');
 
     try {
-      console.log('Attempting login...');
       const { data } = await axios.post(`${backendUrl}/api/auth/login`, formData, { withCredentials: true });
 
-      console.log('Login response:', data);
-
       if (data.success) {
-        console.log('Login successful');
+        // login successful
 
         // After successful login the server sets the auth cookie. Fetch profile
         // to populate client state (cookies are included via withCredentials).

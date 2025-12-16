@@ -108,7 +108,7 @@ export const logout = async (req, res) => {
 export const sendVerifyOtp = async (req, res) => {
   try {
     const userId = req.user.id;
-    console.log("Resolved userId from token:", userId);
+    // resolved userId from token
 
     const user = await usermodel.findById(userId);
     if (!user) {
