@@ -12,5 +12,10 @@ export const transporter = nodemailer.createTransport({
   },
 });
 
+// Verify transporter connectivity/auth at startup — useful diagnostic.
+transporter
+  .verify()
+  .catch((err) => console.error("Mailer verify failed:", err));
+
 // keep default export for existing default imports
 export default transporter;
